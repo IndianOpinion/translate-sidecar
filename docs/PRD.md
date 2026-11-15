@@ -29,13 +29,13 @@ each language and link the copies together. That has four costs.
   the source language, or in a neighbouring script, and the page is
   published under the wrong language code. A model drops a paragraph and
   nobody notices.
-- Search engines are told about every copy at once. In production, a site
-  that announced a large set of thin machine-translated pages to a search
-  engine in a single day saw a site-wide ranking demotion the next day.
+- Search engines are told about every copy at once. Announcing a large set
+  of thin machine-translated pages in one go risks a site-wide ranking
+  demotion.
 
-Measured in production: a sitemap query that found language-marked posts by
-joining the post meta table took over 20 seconds per sitemap file; the same
-filter run against an indexed list of ids took under half a second. Keeping
+A lesson from production: a sitemap query that found language-marked posts
+by joining the post meta table was far too slow on a large site, while the
+same filter run against an indexed list of ids was fast. Keeping
 translations in one narrow, indexed table avoids that class of query
 entirely.
 
