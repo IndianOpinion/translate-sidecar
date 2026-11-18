@@ -43,6 +43,10 @@ final class CoreProvider extends \WP_Sitemaps_Provider
             return 0;
         }
 
-        return $this->sitemaps->maxPages((string) $object_subtype);
+        try {
+            return $this->sitemaps->maxPages((string) $object_subtype);
+        } catch (\Throwable $e) {
+            return 0;
+        }
     }
 }

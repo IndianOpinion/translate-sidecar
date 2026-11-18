@@ -194,8 +194,10 @@ final class Admin
      */
     public function rowActions(mixed $actions, mixed $post): mixed
     {
-        if (!is_array($actions) || !$post instanceof \WP_Post || !$this->plugin->posts->isTranslatableType((string) $post->post_type)
-            || !current_user_can(Plugin::capability('request')) || $this->plugin->registry->all() === []) {
+        if (
+            !is_array($actions) || !$post instanceof \WP_Post || !$this->plugin->posts->isTranslatableType((string) $post->post_type)
+            || !current_user_can(Plugin::capability('request')) || $this->plugin->registry->all() === []
+        ) {
             return $actions;
         }
         $actions['translate_sidecar'] = '<a href="' . esc_url(self::actionUrl('request', [

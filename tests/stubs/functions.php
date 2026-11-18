@@ -12,7 +12,7 @@ const OBJECT = 'OBJECT';
 const ARRAY_A = 'ARRAY_A';
 const DAY_IN_SECONDS = 86400;
 
-function add_filter(string $hook, callable $cb, int $priority = 10, int $args = 1): bool
+function add_filter(string $hook, mixed $cb, int $priority = 10, int $args = 1): bool
 {
     WpStub::$hooks[$hook][$priority][] = [$cb, $args];
     $GLOBALS['wp_filter'][$hook] = (object) ['callbacks' => array_map(
@@ -23,7 +23,7 @@ function add_filter(string $hook, callable $cb, int $priority = 10, int $args = 
     return true;
 }
 
-function add_action(string $hook, callable $cb, int $priority = 10, int $args = 1): bool
+function add_action(string $hook, mixed $cb, int $priority = 10, int $args = 1): bool
 {
     return add_filter($hook, $cb, $priority, $args);
 }
@@ -673,4 +673,44 @@ function dbDelta(array|string $queries): array
     }
 
     return [];
+}
+
+function submit_button(string $text = 'Save', string $type = 'primary', string $name = 'submit', bool $wrap = true): void
+{
+    echo '<button type="submit" class="button button-' . esc_attr($type) . '" name="' . esc_attr($name) . '">' . esc_html($text) . '</button>';
+}
+
+function checked(mixed $a, mixed $b = true, bool $echo = true): string
+{
+    return (string) $a === (string) $b ? ' checked="checked"' : '';
+}
+
+function selected(mixed $a, mixed $b = true, bool $echo = true): string
+{
+    return (string) $a === (string) $b ? ' selected="selected"' : '';
+}
+
+function wp_die(string $message = ''): void
+{
+    throw new RuntimeException('wp_die: ' . $message);
+}
+
+function rel_canonical(): void
+{
+}
+
+function wp_generator(): void
+{
+}
+
+function __return_true(): bool
+{
+    return true;
+}
+
+function register_rest_route(string $namespace, string $route, array $args = []): bool
+{
+    $GLOBALS['__routes'][$route] = $args;
+
+    return true;
 }

@@ -89,19 +89,19 @@ final class ScriptGuardTest extends TestCase
      */
     public static function fixtures(): array
     {
-        $hindi = 'नगर परिषद ने सोमवार शाम लंबी बहस के बाद नए बजट को मंज़ूरी दी और सदस्यों ने कहा कि यह योजना स्कूलों को धन देगी';
-        $bengali = 'নগর পরিষদ সোমবার সন্ধ্যায় নতুন বাজেট অনুমোদন করেছে';
+        $devanagari = 'नगर परिषद ने सोमवार शाम लंबी बहस के बाद नए बजट को मंज़ूरी दी और सदस्यों ने कहा कि यह योजना स्कूलों को धन देगी';
+        $neighbour = 'নগর পরিষদ সোমবার সন্ধ্যায় নতুন বাজেট অনুমোদন করেছে';
 
         return [
-            'correct non-Latin translation passes' => [$hindi, ['Devanagari'], 'body', true],
+            'correct non-Latin translation passes' => [$devanagari, ['Devanagari'], 'body', true],
             'body left in Latin fails' => ['The council approved the new budget on Monday evening after a long debate.', ['Devanagari'], 'body', false],
-            'neighbouring script above 5 percent fails' => [$hindi . ' ' . $bengali, ['Devanagari'], 'body', false],
-            'one stray glyph in a long text passes' => [$hindi . ' ক', ['Devanagari'], 'body', true],
+            'neighbouring script above 5 percent fails' => [$devanagari . ' ' . $neighbour, ['Devanagari'], 'body', false],
+            'one stray glyph in a long text passes' => [$devanagari . ' ক', ['Devanagari'], 'body', true],
             'short title with a third-script letter fails' => ['बजट ক', ['Devanagari'], 'title', false],
             'short title without a third script passes' => ['बजट', ['Devanagari'], 'title', true],
             'Latin target answered in Cyrillic fails' => ['Городской совет утвердил новый бюджет в понедельник вечером', ['Latin'], 'body', false],
             'Latin target in Latin passes' => ['Le conseil municipal a approuvé le nouveau budget lundi soir.', ['Latin'], 'body', true],
-            'Latin names in a non-Latin body pass' => [$hindi . ' BBC UNESCO', ['Devanagari'], 'body', true],
+            'Latin names in a non-Latin body pass' => [$devanagari . ' BBC UNESCO', ['Devanagari'], 'body', true],
             'multi-script language adds its shares' => ['市議会は月曜日の夕方に新しい予算を承認しました。カタカナもあります。', ['Han', 'Hiragana', 'Katakana'], 'body', true],
             'multi-script language with one script only fails' => ['市議会は月曜日の夕方に新しい予算を承認しました', ['Katakana'], 'body', false],
         ];

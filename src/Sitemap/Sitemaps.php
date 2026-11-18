@@ -242,10 +242,13 @@ final class Sitemaps
         }
         $lang = $m[1];
         $page = (int) $m[2];
-        if (!isset($this->languages()[$lang]) || $page < 1 || $page > $this->maxPages($lang)) {
+        if (!isset($this->languages()[$lang]) || $page < 1) {
             return ['status' => 404, 'body' => '', 'headers' => []];
         }
         try {
+            if ($page > $this->maxPages($lang)) {
+                return ['status' => 404, 'body' => '', 'headers' => []];
+            }
             $entries = $this->entries($lang, $page);
             $this->markFailed($lang, false);
         } catch (\Throwable $e) {
@@ -267,7 +270,12 @@ final class Sitemaps
             if (in_array($lang, $failed, true)) {
                 continue;
             }
-            $pages = $this->maxPages($lang);
+            try {
+                $pages = $this->maxPages($lang);
+            } catch (\Throwable $e) {
+                Log::error('sitemap index ' . $lang, $e);
+                continue;
+            }
             for ($p = 1; $p <= $pages; $p++) {
                 $xml .= '<sitemap><loc>' . esc_url($this->childUrl($lang, $p)) . "</loc></sitemap>\n";
             }
