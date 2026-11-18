@@ -1,0 +1,64 @@
+{
+    "name": "indianopinion/translate-sidecar",
+    "description": "WordPress plugin that keeps post translations in their own table, routes /xx/slug/ to them, emits hreflang and canonical tags, builds a sitemap per language, and guards against partial and wrong-script translations.",
+    "type": "wordpress-plugin",
+    "license": "MIT",
+    "keywords": [
+        "wordpress",
+        "translation",
+        "hreflang",
+        "multilingual",
+        "sitemap"
+    ],
+    "homepage": "https://github.com/IndianOpinion/translate-sidecar",
+    "support": {
+        "issues": "https://github.com/IndianOpinion/translate-sidecar/issues",
+        "email": "hello@indianopinion.org"
+    },
+    "authors": [
+        {
+            "name": "Indian Opinion",
+            "email": "hello@indianopinion.org"
+        }
+    ],
+    "require": {
+        "php": ">=8.1"
+    },
+    "require-dev": {
+        "php-stubs/wp-cli-stubs": "^2.12",
+        "phpstan/phpstan": "^2.1",
+        "phpunit/phpunit": "^10.5",
+        "squizlabs/php_codesniffer": "^3.10",
+        "szepeviktor/phpstan-wordpress": "^2.0"
+    },
+    "suggest": {
+        "indianopinion/llm-json-php": "Optional transport for the model adapter. Add it as a vcs repository (https://github.com/IndianOpinion/llm-json-php) and wrap it in a translate_sidecar_llm_caller filter; see the README."
+    },
+    "autoload": {
+        "psr-4": {
+            "IndianOpinion\\TranslateSidecar\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "IndianOpinion\\TranslateSidecar\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "stan": "phpstan analyse --memory-limit=1G",
+        "cs": "phpcs",
+        "check": [
+            "@cs",
+            "@stan",
+            "@test"
+        ]
+    },
+    "config": {
+        "sort-packages": true,
+        "platform": {
+            "php": "8.1.0"
+        }
+    },
+    "minimum-stability": "stable"
+}
