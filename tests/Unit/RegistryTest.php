@@ -46,6 +46,26 @@ final class RegistryTest extends TestCase
         self::assertStringContainsString('rewrite rule "^es/archive/?$"', implode(' ', $r->validate(['prefix' => 'es', 'hreflang' => 'es'])));
     }
 
+    /**
+     * What else lives at /prefix/ depends on the permalink structure: a
+     * post under /%postname%/, a category under /%category%/, a fixed first
+     * word. Each would be swallowed by the language route.
+     */
+    public function testPermalinkStructureCollisions(): void
+    {
+        $r = $this->plugin->registry;
+        \WpStub::addPost(['ID' => 60, 'post_type' => 'post', 'post_name' => 'it', 'post_title' => 'It']);
+        self::assertStringContainsString('the post "it" (ID 60)', implode(' ', $r->validate(['prefix' => 'it', 'hreflang' => 'it', 'scripts' => ['Latin']])));
+
+        \WpStub::$options['permalink_structure'] = '/%category%/%postname%/';
+        self::assertSame([], $r->validate(['prefix' => 'it', 'hreflang' => 'it', 'scripts' => ['Latin']]), 'A post slug is not at /it/ under this structure.');
+        \WpStub::$terms['category']['nl'] = 12;
+        self::assertStringContainsString('the category "nl" (ID 12)', implode(' ', $r->validate(['prefix' => 'nl', 'hreflang' => 'nl', 'scripts' => ['Latin']])));
+
+        \WpStub::$options['permalink_structure'] = '/sv/%postname%/';
+        self::assertStringContainsString('permalink structure, which starts with "sv/"', implode(' ', $r->validate(['prefix' => 'sv', 'hreflang' => 'sv', 'scripts' => ['Latin']])));
+    }
+
     /** Test 2 (case 3). */
     public function testNoScriptsNeedsExplicitOptOut(): void
     {

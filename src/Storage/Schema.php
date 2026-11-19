@@ -19,6 +19,9 @@ final class Schema
 
     private ?bool $verified = null;
 
+    /**
+     * @param \wpdb $wpdb the database object, or anything with its methods
+     */
     public function __construct(private readonly object $wpdb)
     {
     }
@@ -145,25 +148,40 @@ final class Schema
     public function addSlot(): bool
     {
         $rows = $this->tables()['rows'];
-        $columns = $this->columns($rows);
-        if (in_array('slot', $columns, true)) {
+        $hasColumn = in_array('slot', $this->columns($rows), true);
+        if ($hasColumn && $this->hasUniqueSlot()) {
             update_option(self::UNIQUE_OPTION, 1, false);
 
             return true;
         }
+        // The column without its key enforces nothing, so a lone column
+        // (a key dropped by hand, or a partial copy of the table) gets its
+        // key back. Both forms are one statement: it applies whole or not
+        // at all.
+        $sql = $hasColumn
+            ? "ALTER TABLE {$rows} ADD UNIQUE KEY one_per_slot (post_id,lang,slot)"
+            : "ALTER TABLE {$rows} ADD COLUMN slot varchar(16) GENERATED ALWAYS AS "
+                . "(CASE WHEN state IN ('live','candidate') THEN state ELSE NULL END) VIRTUAL, "
+                . 'ADD UNIQUE KEY one_per_slot (post_id,lang,slot)';
         $suppress = method_exists($this->wpdb, 'suppress_errors') ? $this->wpdb->suppress_errors(true) : false;
-        $ok = $this->wpdb->query(
-            "ALTER TABLE {$rows} ADD COLUMN slot varchar(16) GENERATED ALWAYS AS "
-            . "(CASE WHEN state IN ('live','candidate') THEN state ELSE NULL END) VIRTUAL, "
-            . 'ADD UNIQUE KEY one_per_slot (post_id,lang,slot)'
-        );
+        $ok = $this->wpdb->query($sql);
         if (method_exists($this->wpdb, 'suppress_errors')) {
             $this->wpdb->suppress_errors((bool) $suppress);
         }
-        $supported = $ok !== false;
+        $supported = $ok !== false && $this->hasUniqueSlot();
         update_option(self::UNIQUE_OPTION, $supported ? 1 : 0, false);
 
         return $supported;
+    }
+
+    /**
+     * True when the unique key on (post_id, lang, slot) exists.
+     */
+    public function hasUniqueSlot(): bool
+    {
+        $rows = $this->wpdb->get_results("SHOW INDEX FROM {$this->tables()['rows']} WHERE Key_name = 'one_per_slot'", ARRAY_A);
+
+        return is_array($rows) && $rows !== [];
     }
 
     /**

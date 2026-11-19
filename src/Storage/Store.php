@@ -37,6 +37,16 @@ interface Store
      */
     public function liveForPosts(array $postIds, string $lang): array;
 
+    /**
+     * Live rows of several posts in every language, in one query, without
+     * their text (narrow rows, `partial` set). For listings such as sitemap
+     * alternates.
+     *
+     * @param list<int> $postIds
+     * @return list<Row>
+     */
+    public function liveNarrowForPosts(array $postIds): array;
+
     /** A queued or running job for this post and language. */
     public function activeJob(int $postId, string $lang): ?Row;
 
@@ -46,6 +56,14 @@ interface Store
      * @return list<Row>
      */
     public function dueJobs(string $nowGmt, int $limit, ?string $lang = null): array;
+
+    /**
+     * Puts back jobs left `running` since before `$beforeGmt` (the process
+     * died mid-call) as `queued`, counting an attempt; a job that already
+     * used `$maxAttempts` fails with reason `stalled`. Returns the number
+     * of rows changed.
+     */
+    public function recoverStalled(string $beforeGmt, int $maxAttempts, string $nowGmt): int;
 
     /**
      * Updates columns. With $expectedState the update is conditional on the

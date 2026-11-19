@@ -98,6 +98,20 @@ final class MemoryStore implements Store
         return $out;
     }
 
+    public function liveNarrowForPosts(array $postIds): array
+    {
+        $this->queries++;
+        $keep = ['id', 'post_id', 'lang', 'state', 'source_hash', 'approved_gmt', 'updated_gmt', 'approved_by'];
+        $out = [];
+        foreach ($this->rows as $r) {
+            if (in_array($r['post_id'], $postIds, true) && $r['state'] === Row::LIVE) {
+                $out[] = Row::fromDb(array_intersect_key($r, array_flip($keep)));
+            }
+        }
+
+        return $out;
+    }
+
     public function activeJob(int $postId, string $lang): ?Row
     {
         $this->queries++;
@@ -115,6 +129,32 @@ final class MemoryStore implements Store
             && ($lang === null || $r['lang'] === $lang), false);
 
         return array_slice($rows, 0, $limit);
+    }
+
+    public function recoverStalled(string $beforeGmt, int $maxAttempts, string $nowGmt): int
+    {
+        $this->guardWrite();
+        $this->queries += 2;
+        $n = 0;
+        foreach ($this->rows as $id => $r) {
+            if ($r['state'] !== Row::RUNNING || $r['updated_gmt'] === null || $r['updated_gmt'] >= $beforeGmt) {
+                continue;
+            }
+            if ((int) $r['attempts'] >= $maxAttempts) {
+                $this->rows[$id] = array_merge($r, ['state' => Row::FAILED, 'reason' => 'stalled', 'updated_gmt' => $nowGmt]);
+            } else {
+                $this->rows[$id] = array_merge($r, [
+                    'state' => Row::QUEUED,
+                    'reason' => 'stalled',
+                    'attempts' => (int) $r['attempts'] + 1,
+                    'next_attempt_gmt' => $nowGmt,
+                    'updated_gmt' => $nowGmt,
+                ]);
+            }
+            $n++;
+        }
+
+        return $n;
     }
 
     public function update(int $id, array $changes, ?string $expectedState = null): bool
@@ -169,8 +209,13 @@ final class MemoryStore implements Store
         $this->queries++;
         $rows = $this->select(static fn (array $r): bool => $r['lang'] === $lang && $r['state'] === Row::LIVE, false);
         usort($rows, static fn (Row $a, Row $b): int => [(string) $b->approvedGmt, $b->id] <=> [(string) $a->approvedGmt, $a->id]);
+        // Narrow rows, as the database store selects them.
+        $keep = ['id', 'post_id', 'lang', 'state', 'source_hash', 'approved_gmt', 'updated_gmt', 'approved_by'];
 
-        return array_slice($rows, $offset, $limit);
+        return array_map(
+            fn (Row $r): Row => Row::fromDb(array_intersect_key($this->rows[$r->id], array_flip($keep))),
+            array_slice($rows, $offset, $limit)
+        );
     }
 
     public function countLiveForLang(string $lang): int

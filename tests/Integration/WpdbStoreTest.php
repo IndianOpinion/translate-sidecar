@@ -122,4 +122,36 @@ final class WpdbStoreTest extends TestCase
         self::assertCount(1, $this->store->liveForLang('fr', 0, 10));
         self::assertSame(1, $this->store->deleteForLang('fr'));
     }
+
+    public function testStalledRunningJobsAreRecovered(): void
+    {
+        $old = $this->row(Row::RUNNING);
+        $old->updatedGmt = '2026-01-01 00:00:00';
+        $oldId = $this->store->insert($old);
+        $spent = $this->row(Row::RUNNING, 2);
+        $spent->updatedGmt = '2026-01-01 00:00:00';
+        $spent->attempts = 4;
+        $spentId = $this->store->insert($spent);
+        $fresh = $this->row(Row::RUNNING, 3);
+        $fresh->updatedGmt = '2026-01-01 02:00:00';
+        $freshId = $this->store->insert($fresh);
+
+        self::assertSame(2, $this->store->recoverStalled('2026-01-01 01:00:00', 4, '2026-01-01 02:00:00'));
+        self::assertSame(Row::QUEUED, $this->store->find($oldId)?->state);
+        self::assertSame(1, $this->store->find($oldId)?->attempts);
+        self::assertSame(Row::FAILED, $this->store->find($spentId)?->state);
+        self::assertSame('stalled', $this->store->find($spentId)?->reason);
+        self::assertSame(Row::RUNNING, $this->store->find($freshId)?->state);
+    }
+
+    public function testSlotIsReportedOnlyWithItsUniqueKey(): void
+    {
+        $rows = $this->schema->tables()['rows'];
+        $this->wpdb->query("ALTER TABLE {$rows} DROP INDEX one_per_slot");
+        self::assertTrue($this->schema->addSlot(), 'The missing key is added back.');
+        self::assertTrue($this->schema->hasUniqueSlot());
+        $this->store->insert($this->row(Row::LIVE));
+        $this->expectException(\RuntimeException::class);
+        $this->store->insert($this->row(Row::LIVE));
+    }
 }

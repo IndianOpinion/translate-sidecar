@@ -55,6 +55,8 @@ final class WpStub
     public static int $getPostsCalls = 0;
     /** @var list<array<string, mixed>> */
     public static array $blocks = [];
+    /** @var array<string, array<string, int>> taxonomy to slug to term id */
+    public static array $terms = [];
 
     public static function reset(): void
     {
@@ -88,6 +90,7 @@ final class WpStub
         self::$sitemapsEnabled = true;
         self::$getPostsCalls = 0;
         self::$blocks = [];
+        self::$terms = [];
         $GLOBALS['wp_rewrite'] = new WP_Rewrite_Stub();
         $GLOBALS['wp_filter'] = [];
         $GLOBALS['shortcode_tags'] = [];

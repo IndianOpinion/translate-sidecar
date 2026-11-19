@@ -301,6 +301,13 @@ function get_page_by_path(string $path, string $output = OBJECT, mixed $types = 
     return null;
 }
 
+function get_term_by(string $field, mixed $value, string $taxonomy = ''): object|false
+{
+    $id = $field === 'slug' ? (WpStub::$terms[$taxonomy][(string) $value] ?? 0) : 0;
+
+    return $id > 0 ? (object) ['term_id' => $id, 'slug' => (string) $value, 'taxonomy' => $taxonomy] : false;
+}
+
 function get_page_uri(mixed $post): string
 {
     $post = get_post($post);

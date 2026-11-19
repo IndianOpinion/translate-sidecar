@@ -54,6 +54,11 @@ final class Row
     public int $approvedBy = 0;
     public bool $isPrior = false;
     public int $createdBy = 0;
+    /**
+     * True when the row was read without its segment list (a narrow
+     * listing query). Code that needs the segments reloads the row.
+     */
+    public bool $partial = false;
 
     /**
      * @param array<string, mixed>|object $r a database row
@@ -84,6 +89,7 @@ final class Row
             }
         }
         $row->segments = $segs;
+        $row->partial = !array_key_exists('segment_hashes', $a);
         $row->adapter = (string) ($a['adapter'] ?? '');
         $row->provider = (string) ($a['provider'] ?? '');
         $row->model = (string) ($a['model'] ?? '');

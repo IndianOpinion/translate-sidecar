@@ -82,15 +82,16 @@ final class SiteHealth
     private function collisions(): array
     {
         $found = [];
+        // The same checks as saving a language, so a page, post or category
+        // created later at a prefix is flagged too (case 93).
         foreach (array_keys($this->plugin->registry->all()) as $prefix) {
-            $page = get_page_by_path($prefix, OBJECT, 'page');
-            if ($page instanceof \WP_Post && (int) $page->post_parent === 0) {
-                $found[] = sprintf('the language prefix "%s" collides with the top-level page "%s" (ID %d)', $prefix, $prefix, (int) $page->ID);
+            foreach ($this->plugin->registry->collisions($prefix) as $collision) {
+                $found[] = sprintf('the language prefix "%s" collides with %s', $prefix, $collision);
             }
         }
 
         return $found === []
-            ? ['good', 'No language prefix collides with a top-level page.']
+            ? ['good', 'No language prefix collides with a page, a post, a category or a rewrite rule.']
             : ['recommended', 'Prefix collision: ' . implode('; ', $found) . '. The language route wins for /prefix/slug/.'];
     }
 

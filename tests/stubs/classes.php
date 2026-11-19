@@ -113,6 +113,8 @@ final class FakeWpdb
     public array $queries = [];
     /** @var array<string, list<string>> table to columns */
     public array $columns = [];
+    /** @var array<string, list<string>> table to unique key names */
+    public array $indexes = [];
     public bool $refuseAlter = false;
 
     public function get_charset_collate(): string
@@ -134,6 +136,9 @@ final class FakeWpdb
         if (preg_match('/^ALTER TABLE (\S+) ADD COLUMN (\w+)/', $sql, $m) === 1) {
             $this->columns[$m[1]][] = $m[2];
         }
+        if (preg_match('/^ALTER TABLE (\S+) .*ADD UNIQUE KEY (\w+)/', $sql, $m) === 1) {
+            $this->indexes[$m[1]][] = $m[2];
+        }
         if (preg_match('/^DROP TABLE IF EXISTS (\S+)/', $sql, $m) === 1) {
             unset($this->columns[$m[1]]);
         }
@@ -149,6 +154,9 @@ final class FakeWpdb
         $this->queries[] = $sql;
         if (preg_match('/^SHOW COLUMNS FROM (\S+)/', $sql, $m) === 1) {
             return array_map(static fn (string $c): array => ['Field' => $c], $this->columns[$m[1]] ?? []);
+        }
+        if (preg_match("/^SHOW INDEX FROM (\\S+) WHERE Key_name = '(\\w+)'/", $sql, $m) === 1) {
+            return in_array($m[2], $this->indexes[$m[1]] ?? [], true) ? [['Key_name' => $m[2]]] : [];
         }
 
         return [];

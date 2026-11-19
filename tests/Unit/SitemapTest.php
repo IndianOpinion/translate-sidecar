@@ -117,6 +117,34 @@ final class SitemapTest extends TestCase
         self::assertStringContainsString('hreflang="x-default"', $xml);
     }
 
+    /**
+     * Performance budget (section 9): a page costs a fixed number of row
+     * queries however many URLs it holds, with alternates on too; a held
+     * translation (hold_major, title changed) is still left out.
+     */
+    public function testPageQueryCountDoesNotGrowWithUrls(): void
+    {
+        $this->plugin->settings->save(['sitemap_alternates' => true, 'stale_policy' => 'hold_major']);
+        foreach (range(1, 12) as $id) {
+            $this->post($id);
+            $this->live($id, 'fr');
+        }
+        \WpStub::$posts[3]->post_title = 'A completely different headline';
+        $this->plugin->translations->forget(3);
+        $this->rebuild();
+
+        $before = $this->store->queryCount();
+        $entries = $this->plugin->sitemaps->build('fr', 1);
+        $used = $this->store->queryCount() - $before;
+
+        self::assertCount(11, $entries);
+        $locs = implode(' ', array_column($entries, 'loc'));
+        self::assertStringContainsString('council-approves-budget-4/', $locs);
+        self::assertStringNotContainsString('council-approves-budget-3/', $locs, 'Held by hold_major.');
+        self::assertArrayHasKey('alternates', $entries[0]);
+        self::assertLessThanOrEqual(4, $used, 'Rows, clusters and one reload of the stale row; not one query per URL.');
+    }
+
     /** Test 67 (case 77). */
     public function testCacheFreshnessLockAndDirtyMarking(): void
     {

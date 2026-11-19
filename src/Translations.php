@@ -17,6 +17,8 @@ final class Translations
 {
     /** @var array<int, array<string, Row>> */
     private array $live = [];
+    /** @var array<string, array<int, Row|null>> lang to post id to row, from batched lookups */
+    private array $primed = [];
     /** @var array<string, bool> */
     private array $held = [];
 
@@ -48,25 +50,61 @@ final class Translations
     }
 
     /**
-     * Seeds the per-request cache, for example from a batched query.
+     * Seeds the per-request cache for one language from a batched query.
+     * Posts in `$postIds` without a row are remembered as having none. The
+     * full per-post list (liveRows) is not touched, so a later cluster
+     * lookup for one of these posts still sees every language.
      *
      * @param array<int, Row> $rowsByPost
+     * @param list<int>       $postIds
      */
-    public function prime(string $lang, array $rowsByPost): void
+    public function prime(string $lang, array $rowsByPost, array $postIds = []): void
     {
+        foreach ($postIds as $postId) {
+            $this->primed[$lang][(int) $postId] = null;
+        }
         foreach ($rowsByPost as $postId => $row) {
-            $this->live[$postId][$lang] = $row;
+            $this->primed[$lang][(int) $postId] = $row;
+        }
+    }
+
+    /**
+     * Loads the live rows of many posts in one query, for listings that
+     * need each post's cluster (sitemap alternates). The rows are narrow:
+     * enough for routing and clusters, not for rendering, so only listing
+     * code calls this, never a page render.
+     *
+     * @param list<int> $postIds
+     */
+    public function primeClusters(array $postIds): void
+    {
+        $missing = array_values(array_filter($postIds, fn (int $id): bool => !isset($this->live[$id])));
+        if ($missing === []) {
+            return;
+        }
+        foreach ($missing as $id) {
+            $this->live[$id] = [];
+        }
+        foreach ($this->store->liveNarrowForPosts($missing) as $row) {
+            $this->live[$row->postId][$row->lang] = $row;
         }
     }
 
     public function live(int $postId, string $lang): ?Row
     {
+        if (!isset($this->live[$postId]) && isset($this->primed[$lang]) && array_key_exists($postId, $this->primed[$lang])) {
+            return $this->primed[$lang][$postId];
+        }
+
         return $this->liveRows($postId)[$lang] ?? null;
     }
 
     public function forget(int $postId): void
     {
         unset($this->live[$postId]);
+        foreach (array_keys($this->primed) as $lang) {
+            unset($this->primed[$lang][$postId]);
+        }
         foreach (array_keys($this->held) as $key) {
             if (str_starts_with($key, $postId . ':')) {
                 unset($this->held[$key]);
@@ -94,7 +132,9 @@ final class Translations
             if ($policy === 'hold') {
                 $held = true;
             } elseif ($policy === 'hold_major') {
-                $held = $this->isMajorChange($row, $post);
+                // A narrow listing row has no segments; read the full row.
+                $full = $row->partial ? $this->store->find($row->id) : $row;
+                $held = $full === null || $full->state !== Row::LIVE || $this->isMajorChange($full, $post);
             }
         }
 

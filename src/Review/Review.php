@@ -194,8 +194,11 @@ final class Review
         }
         $now = $this->clock->gmt();
         try {
+            $setAside = [];
             foreach ($this->store->rowsFor($postId, $lang, [Row::LIVE]) as $live) {
-                $this->store->update($live->id, ['state' => Row::REJECTED, 'reason' => 'rolled_back', 'updated_gmt' => $now], Row::LIVE);
+                if ($this->store->update($live->id, ['state' => Row::REJECTED, 'reason' => 'rolled_back', 'updated_gmt' => $now], Row::LIVE)) {
+                    $setAside[] = $live;
+                }
             }
             $ok = $this->store->update($prior->id, [
                 'state' => Row::LIVE,
@@ -204,6 +207,13 @@ final class Review
                 'approved_by' => $userId,
                 'updated_gmt' => $now,
             ], Row::PRIOR);
+            if (!$ok) {
+                // The prior moved under us: put the live row back rather
+                // than leave the post with no live translation.
+                foreach ($setAside as $live) {
+                    $this->store->update($live->id, ['state' => Row::LIVE, 'reason' => $live->reason, 'updated_gmt' => $now], Row::REJECTED);
+                }
+            }
         } finally {
             $this->store->unlock($lock);
         }

@@ -97,11 +97,13 @@ final class Frontend
             if ($d === null || $d->row === null || $id !== $d->postId) {
                 return $excerpt;
             }
+            // Stored excerpts are plain text from model output: escape them,
+            // like the title, so a stray "<" can never open a tag.
             if ($d->row->excerpt !== '') {
-                return $d->row->excerpt;
+                return esc_html($d->row->excerpt);
             }
 
-            return Text::trimGraphemes(Text::plain($d->row->content), 300);
+            return esc_html(Text::trimGraphemes(Text::plain($d->row->content), 300));
         } catch (\Throwable $e) {
             Log::error('get_the_excerpt', $e);
 
@@ -262,7 +264,7 @@ final class Frontend
             return $html;
         }
         $ids = array_values(array_unique(array_map(static fn (\WP_Post $p): int => (int) $p->ID, $matched)));
-        $this->translations->prime($lang, $this->store->liveForPosts($ids, $lang));
+        $this->translations->prime($lang, $this->store->liveForPosts($ids, $lang), $ids);
         $replace = [];
         foreach ($matched as $href => $p) {
             $url = $this->translations->url((int) $p->ID, $lang);

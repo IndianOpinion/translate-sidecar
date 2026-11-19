@@ -265,6 +265,23 @@ final class Registry
         if ($page instanceof \WP_Post && (int) $page->post_parent === 0) {
             $found[] = sprintf('the top-level page "%s" (ID %d)', $prefix, (int) $page->ID);
         }
+        // The first segment of the permalink structure decides what else
+        // lives at /prefix/: a post slug under /%postname%/, a category
+        // under /%category%/, or a fixed word such as /blog/.
+        $first = (string) strtok(ltrim((string) get_option('permalink_structure', ''), '/'), '/');
+        if ($first === $prefix) {
+            $found[] = sprintf('the permalink structure, which starts with "%s/"', $prefix);
+        } elseif ($first === '%postname%') {
+            $post = get_page_by_path($prefix, OBJECT, 'post');
+            if ($post instanceof \WP_Post) {
+                $found[] = sprintf('the post "%s" (ID %d), which the permalink structure serves at /%s/', $prefix, (int) $post->ID, $prefix);
+            }
+        } elseif ($first === '%category%' && function_exists('get_term_by')) {
+            $term = get_term_by('slug', $prefix, 'category');
+            if (is_object($term) && property_exists($term, 'term_id')) {
+                $found[] = sprintf('the category "%s" (ID %d), whose posts the permalink structure serves under /%s/', $prefix, (int) $term->term_id, $prefix);
+            }
+        }
         global $wp_rewrite;
         if (is_object($wp_rewrite) && method_exists($wp_rewrite, 'wp_rewrite_rules')) {
             $rules = $wp_rewrite->wp_rewrite_rules();

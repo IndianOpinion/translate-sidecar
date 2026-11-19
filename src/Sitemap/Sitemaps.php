@@ -111,6 +111,11 @@ final class Sitemaps
             }
         }
         $alternates = $this->settings->bool('sitemap_alternates');
+        if ($alternates) {
+            // One query for every language of every post on the page,
+            // instead of one per URL.
+            $this->translations->primeClusters(array_keys($byId));
+        }
         $entries = [];
         $bytes = 0;
         foreach ($rows as $row) {
@@ -122,8 +127,10 @@ final class Sitemaps
             if ($native !== null && $native->prefix === $lang) {
                 continue;
             }
-            $full = $this->translations->live($row->postId, $lang);
-            if ($full === null || $this->translations->isHeld($full, $post)) {
+            // The narrow row is enough: isHeld() reads the full row only for
+            // a stale translation under hold_major, so a page costs one row
+            // query plus one post query, not one query per URL.
+            if ($this->translations->isHeld($row, $post)) {
                 continue;
             }
             $approved = (string) $row->approvedGmt;

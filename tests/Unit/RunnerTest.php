@@ -35,6 +35,32 @@ final class RunnerTest extends TestCase
         return (int) $r['fr']['job_id'];
     }
 
+    /**
+     * A process that dies mid-call leaves its job running; after an hour a
+     * tick puts it back, and it fails once the backoff schedule is used up.
+     */
+    public function testStalledRunningJobIsRecovered(): void
+    {
+        $id = $this->queue();
+        self::assertTrue($this->store->update($id, ['state' => Row::RUNNING, 'updated_gmt' => $this->clock->gmt()], Row::QUEUED));
+        $this->plugin->runner->tick();
+        self::assertSame(Row::RUNNING, $this->store->find($id)?->state, 'A fresh running job is left alone.');
+
+        $this->clock->advance(Runner::STALLED_AFTER + 60);
+        $this->plugin->runner->tick();
+        $row = $this->store->find($id);
+        self::assertSame(Row::CANDIDATE, $row?->state);
+        self::assertSame(1, $row?->attempts);
+
+        $this->post(2, ['post_content' => '<p>Text about the harbour, the ferries and the lighthouse on the hill.</p>']);
+        $stuck = $this->queue(2);
+        $this->store->update($stuck, ['state' => Row::RUNNING, 'attempts' => count(Runner::BACKOFF), 'updated_gmt' => $this->clock->gmt()], Row::QUEUED);
+        $this->clock->advance(Runner::STALLED_AFTER + 60);
+        $this->plugin->runner->tick();
+        self::assertSame(Row::FAILED, $this->store->find($stuck)?->state);
+        self::assertSame('stalled', $this->store->find($stuck)?->reason);
+    }
+
     /** Test 68 (case 78). */
     public function testOverlappingTicksAndBudgets(): void
     {

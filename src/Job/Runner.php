@@ -29,6 +29,7 @@ use IndianOpinion\TranslateSidecar\Translator\Translators;
 final class Runner
 {
     public const BACKOFF = [300, 1800, 7200, 43200];
+    public const STALLED_AFTER = 3600;
     public const STOPPERS = ['disabled', 'credit_paused', 'capped', 'spend_denied', 'no_adapter'];
 
     /** @var callable(): float */
@@ -67,6 +68,7 @@ final class Runner
         }
         try {
             update_option('translate_sidecar_last_tick', $this->clock->now(), false);
+            $this->recoverStalled();
             $blocked = $this->gate->blocked();
             if ($blocked !== null) {
                 $summary->stopped = $blocked;
@@ -93,6 +95,26 @@ final class Runner
         }
 
         return $summary;
+    }
+
+    /**
+     * A job left `running` for an hour belongs to a process that died
+     * mid-call (a fatal error or a host time limit). Without this it would
+     * stay `running` for ever and block new requests for its post and
+     * language. It goes back to the queue with an attempt counted, and
+     * fails `stalled` once the backoff schedule is used up.
+     */
+    private function recoverStalled(): void
+    {
+        try {
+            $this->store->recoverStalled(
+                $this->clock->gmt($this->clock->now() - self::STALLED_AFTER),
+                count(self::BACKOFF),
+                $this->clock->gmt()
+            );
+        } catch (\Throwable $e) {
+            Log::error('recovering stalled jobs', $e);
+        }
     }
 
     /**

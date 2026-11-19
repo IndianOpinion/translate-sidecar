@@ -65,6 +65,41 @@ final class FrontendTest extends TestCase
         self::assertStringContainsString('href="https://other.test/routed/"', $out);
     }
 
+    /**
+     * The batched link lookup for one language must not hide a linked
+     * post's other languages from a later cluster lookup in the same
+     * request, and a post found to have no row is not queried again.
+     */
+    public function testLinkLookupKeepsOtherLanguagesInTheCluster(): void
+    {
+        $this->post(2, ['post_name' => 'routed']);
+        $this->post(3, ['post_name' => 'unrouted']);
+        $this->live(2, 'fr');
+        $this->live(2, 'ar');
+        $this->live(1, 'fr');
+        $this->rebuild();
+        $this->visit('fr', self::SLUG);
+        $this->plugin->frontend->rewriteLinks('<a href="https://example.test/routed/">a</a> <a href="https://example.test/unrouted/">b</a>', 'fr');
+
+        $before = $this->store->queryCount();
+        self::assertNull($this->plugin->translations->live(3, 'fr'));
+        self::assertSame($before, $this->store->queryCount(), 'A post primed as having no row is not looked up again.');
+        self::assertArrayHasKey('ar', $this->plugin->translations->cluster(2));
+        self::assertArrayHasKey('fr', $this->plugin->translations->cluster(2));
+    }
+
+    /** Model output in a stored excerpt is escaped like the title. */
+    public function testStoredExcerptIsEscaped(): void
+    {
+        $row = $this->live(1, 'fr');
+        $this->store->update($row->id, ['excerpt' => 'Un <script>x</script> & co']);
+        $this->rebuild();
+        $this->visit('fr', self::SLUG);
+        $out = (string) $this->plugin->frontend->excerpt('orig', \WpStub::$posts[1]);
+        self::assertStringNotContainsString('<script>', $out);
+        self::assertStringContainsString('&lt;script&gt;', $out);
+    }
+
     /** Test 26 (case 29). */
     public function testCommentsBelongToTheOriginal(): void
     {

@@ -14,6 +14,9 @@ final class WpdbStore implements Store
     private string $memory;
     private string $counters;
 
+    /**
+     * @param \wpdb $wpdb the database object, or anything with its methods
+     */
     public function __construct(private readonly object $wpdb, private readonly Schema $schema)
     {
         $t = $schema->tables();
@@ -36,7 +39,7 @@ final class WpdbStore implements Store
 
     private function fail(string $what): never
     {
-        throw new \RuntimeException(sprintf('Database error while %s: %s', $what, (string) ($this->wpdb->last_error ?? '')));
+        throw new \RuntimeException(sprintf('Database error while %s: %s', $what, (string) $this->wpdb->last_error));
     }
 
     /**
@@ -117,6 +120,21 @@ final class WpdbStore implements Store
         return $out;
     }
 
+    public function liveNarrowForPosts(array $postIds): array
+    {
+        $postIds = array_values(array_unique(array_map('intval', $postIds)));
+        if ($postIds === []) {
+            return [];
+        }
+        $in = implode(',', array_fill(0, count($postIds), '%d'));
+
+        return $this->rowsQuery(
+            "SELECT id, post_id, lang, state, source_hash, approved_gmt, updated_gmt, approved_by FROM {$this->rows}
+             WHERE post_id IN ({$in}) AND state = 'live'",
+            $postIds
+        );
+    }
+
     public function activeJob(int $postId, string $lang): ?Row
     {
         $rows = $this->rowsQuery(
@@ -138,6 +156,27 @@ final class WpdbStore implements Store
         $args[] = $limit;
 
         return $this->rowsQuery($sql . ' ORDER BY id ASC LIMIT %d', $args);
+    }
+
+    public function recoverStalled(string $beforeGmt, int $maxAttempts, string $nowGmt): int
+    {
+        $this->guardWrite();
+        $this->queries += 2;
+        $failed = $this->wpdb->query($this->prepare(
+            "UPDATE {$this->rows} SET state = 'failed', reason = 'stalled', updated_gmt = %s
+             WHERE state = 'running' AND updated_gmt < %s AND attempts >= %d",
+            [$nowGmt, $beforeGmt, $maxAttempts]
+        ));
+        $requeued = $this->wpdb->query($this->prepare(
+            "UPDATE {$this->rows} SET state = 'queued', reason = 'stalled', attempts = attempts + 1, next_attempt_gmt = %s, updated_gmt = %s
+             WHERE state = 'running' AND updated_gmt < %s",
+            [$nowGmt, $nowGmt, $beforeGmt]
+        ));
+        if ($failed === false || $requeued === false) {
+            $this->fail('recovering stalled jobs');
+        }
+
+        return (int) $failed + (int) $requeued;
     }
 
     public function update(int $id, array $changes, ?string $expectedState = null): bool
@@ -168,7 +207,7 @@ final class WpdbStore implements Store
         $this->guardWrite();
         $this->queries++;
         $ids = $this->wpdb->get_col($this->prepare("SELECT id FROM {$this->rows} WHERE post_id = %d", [$postId]));
-        $ids = array_map('intval', is_array($ids) ? $ids : []);
+        $ids = array_values(array_map('intval', is_array($ids) ? $ids : []));
         if ($ids !== []) {
             $this->queries++;
             $this->wpdb->query($this->prepare("DELETE FROM {$this->rows} WHERE post_id = %d", [$postId]));
