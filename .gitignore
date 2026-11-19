@@ -1,0 +1,7 @@
+/vendor/
+/.phpunit.cache/
+/.phpcs-cache
+/build/
+/coverage/
+.DS_Store
+*.swp

@@ -1,0 +1,23 @@
+includes:
+    - vendor/szepeviktor/phpstan-wordpress/extension.neon
+
+parameters:
+    level: 8
+    phpVersion: 80100
+    paths:
+        - src
+        - translate-sidecar.php
+        - uninstall.php
+    scanFiles:
+        - vendor/php-stubs/wp-cli-stubs/wp-cli-stubs.php
+    treatPhpDocTypesAsCertain: false
+    ignoreErrors:
+        # The SQL passed to wpdb::prepare() interpolates this plugin's own
+        # table names (built from $wpdb->prefix); every value goes through
+        # placeholders. The stubs ask for a literal string, which an
+        # interpolated table name can never be.
+        -
+            identifier: argument.type
+            message: '#^Parameter \#1 \$query of method wpdb::prepare\(\) expects literal-string, string given\.$#'
+            path: src/Storage/WpdbStore.php
+            count: 1
