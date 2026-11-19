@@ -18,6 +18,7 @@ This project came out of the work on indianopinion.org and is written from scrat
 - [WP-CLI](#wp-cli)
 - [Limitations](#limitations)
 - [FAQ](#faq)
+- [Contributing](#contributing)
 - [Licence](#licence)
 
 ## Install
@@ -164,6 +165,10 @@ Exit codes: 0 ok, 1 error, 2 refused by the cap, the kill switch or the spend me
 **What does it send to the provider?** Post text only. No author names, e-mail addresses, comments or user data.
 
 **My SEO plugin prints its own canonical.** Use `filters` mode and wire the values from `translate_sidecar_head_values` into its filters, or `rewrite` mode to have them edited in place.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Licence
 
