@@ -90,7 +90,7 @@ final class ScriptCounter
         $previous = null;
         foreach ($m as $match) {
             $isMark = !isset($match[1]) || $match[1] === '';
-            $char = $isMark ? $match[2] : $match[1];
+            $char = $isMark ? ($match[2] ?? '') : $match[1];
             $cp = mb_ord($char, 'UTF-8');
             if ($cp === false) {
                 continue;

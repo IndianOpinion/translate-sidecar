@@ -204,7 +204,7 @@ final class Segmenter
             }
         }
 
-        return $merged;
+        return array_values($merged);
     }
 
     private function isVerbatimBlock(string $name, string $json): bool
@@ -370,7 +370,7 @@ final class Segmenter
         return (string) preg_replace_callback(
             '/(\salt\s*=\s*)("([^"]*)"|\'([^\']*)\')/i',
             function (array $m) use ($raw): string {
-                $value = $m[3] !== '' ? $m[3] : ($m[4] ?? '');
+                $value = ($m[3] ?? '') !== '' ? $m[3] : ($m[4] ?? '');
                 $plain = trim(html_entity_decode($value, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
                 if ($plain === '' || preg_match('/\p{L}/u', $plain) !== 1) {
                     return $m[0];
@@ -437,11 +437,18 @@ final class Segmenter
                     continue;
                 }
                 while (count($stack) - 1 > $found) {
-                    [$orphan] = array_pop($stack);
-                    $text = str_replace('{' . $orphan . '}', '{' . $orphan . '/}', $text);
+                    $top = array_pop($stack);
+                    if ($top === null) {
+                        break;
+                    }
+                    $text = str_replace('{' . $top[0] . '}', '{' . $top[0] . '/}', $text);
                 }
-                [$num] = array_pop($stack);
-                $placeholders[$num]['close'] = $itemRaw;
+                $top = array_pop($stack);
+                if ($top === null) {
+                    continue;
+                }
+                $num = $top[0];
+                $placeholders[$num] = ['open' => $placeholders[$num]['open'] ?? '', 'close' => $itemRaw];
                 $text .= '{/' . $num . '}';
             } else {
                 $n++;
