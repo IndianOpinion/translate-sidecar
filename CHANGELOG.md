@@ -18,5 +18,7 @@ All notable changes to this project are documented here. The format follows
 - Routing of `/xx/slug/` with 302, 301 and 410 answers, value swaps scoped to the queried post, internal link rewriting and a "read the original" link.
 - Canonical, hreflang, Open Graph and JSON-LD output in `core`, `filters` or `rewrite` mode.
 - Per-language sitemaps through core or the plugin's own routes, cached by build time.
+- Adapters: a model adapter on `indianopinion/llm-json-php` (key and model from constants, or your own client by filter), a site caller filter for sites without the library, and a manual adapter.
 - Daily call and character caps, kill switch (option, constant, network), credit pause, spend-meter and gen-queue integration.
+- Recovery of jobs left running by a process that died mid-call.
 - REST API, WP-CLI commands, Site Health tests, dashboard and uninstall for every site.

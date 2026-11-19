@@ -1179,3 +1179,35 @@ Written as rules.
     the result is shown to readers.
 25. Never redirect by browser language. Crawlers do not send it and
     readers who chose a URL should get that URL.
+
+## 15. Rulings recorded at code review (19 November 2026)
+
+These settle section 13 and three behaviours where the build differs from
+the text above. Where a case and a ruling disagree, the ruling wins.
+
+1. `stale_policy` defaults to `hold_major` (open question 1; section 7
+   said `serve`).
+2. The last three approved versions are kept for rollback, as rows in the
+   state `prior` (open question 2; case 60 said one).
+3. The language home is deferred: `/xx/` answers 302 to the site home
+   (open question 3; case 38). The `^xx/?$` route is not added while a
+   top-level page owns that slug.
+4. Script guards use code point ranges only, with `\p{L}` and `\p{M}`
+   for letters and marks (open question 4).
+5. `head_mode` detection inspects the `wp_head` callbacks; no loopback
+   request (open question 5).
+6. Uniqueness is a unique key on a generated column where the database
+   supports it, plus a per post and language lock in code everywhere;
+   `SHOW COLUMNS` verification gates every write (open question 6).
+7. Translated alt text lives in the row's JSON map keyed by attachment id,
+   and is also written into the stored body (open question 7).
+8. A configurable ceiling of 200 segments per job; a longer post is
+   refused `too_long` (open question 8; narrows case 99).
+9. A permanently deleted original answers 404, not 410: case 89 deletes
+   its rows, so nothing remembers the slug (narrows case 36).
+10. An indexable language with no URLs answers an empty `urlset` with 200
+    on the plugin's own sitemap routes. With core sitemaps on, core
+    answers the empty page itself, with 404 (narrows case 75).
+11. The model adapter depends on `indianopinion/llm-json-php` through a
+    Composer `vcs` repository; `translate_sidecar_llm_caller` stays for
+    sites without it (section 5.1).

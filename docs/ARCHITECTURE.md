@@ -126,14 +126,26 @@ All code lives under `src/`, namespace `IndianOpinion\TranslateSidecar`.
 
 ## Other decisions
 
-- **llm-json-php is optional, not required.** The model adapter takes its
-  transport from the `translate_sidecar_llm_caller` filter and registers
-  as `caller`. `LlmJsonTranslator` holds the prompt, schema and reply
-  parsing and accepts any callable; `CallerTranslator` is the same class
-  registered from the filter. `composer.json` lists llm-json-php under
-  `suggest` only: a `vcs` repository entry made every `composer install`
-  clone it, which fails without GitHub credentials. The README shows how
-  to add it. Without it the plugin runs with any caller.
+- **llm-json-php is a real dependency, with a way round it** (review
+  ruling). `composer.json` requires `indianopinion/llm-json-php` through a
+  `vcs` repository entry (`no-api`), as every group B and C plugin does,
+  and the plugin loads it from its installed `vendor/` copy.
+  `LlmJsonTranslator` (id `llm-json`) builds an llm-json-php `Request` from
+  the generic prompt and strict schema, calls a `Client`, and maps the
+  library's typed exceptions: credit exhausted pauses calls, a truncated
+  or malformed last attempt fails `truncated` or `bad_shape`, refusals,
+  content filters and bad keys fail at once, everything the library calls
+  retryable (rate limits, 5xx, timeouts, the deadline) goes to the
+  backoff schedule. Messages carry outcomes and status codes only, never a
+  body or a key. The client comes from the `translate_sidecar_llm_client`
+  filter, or from the constants `TRANSLATE_SIDECAR_LLM_KEY`,
+  `TRANSLATE_SIDECAR_LLM_MODEL` and `TRANSLATE_SIDECAR_LLM_BASE_URL` (or
+  environment variables of those names) with the WordPress transport and
+  transient store, one attempt per model and a two minute deadline. The
+  adapter registers only when the library is loaded and a client exists.
+  `CallerTranslator` (id `caller`) keeps the `translate_sidecar_llm_caller`
+  filter for sites that run without the library. Both share the prompt
+  (`PromptBuilder`) and reply checks (`ModelReply`).
 - **Caller reply metadata.** A caller may add `_meta` with
   `finish_reason`, `provider`, `model` and `usage`. Exceptions other than
   `TranslatorException` from a caller are treated as retryable.
@@ -182,6 +194,26 @@ All code lives under `src/`, namespace `IndianOpinion\TranslateSidecar`.
 - **Locks** are option rows taken with `INSERT IGNORE` and taken over when
   expired with a compare-and-set update. They work on every MySQL setup
   and survive across connections, unlike `GET_LOCK`.
+- **Stalled jobs.** A job left `running` for an hour belongs to a process
+  that died mid-call (a fatal error, a host time limit). Each tick puts it
+  back in the queue with an attempt counted, or fails it `stalled` once
+  the backoff schedule is used up. Without this a dead job would block new
+  requests for its post and language for ever.
+- **Prefix collisions follow the permalink structure.** Besides pages,
+  bases and foreign rewrite rules, a prefix is refused when the structure
+  starts with that word, when it starts with `%postname%` and a post owns
+  the slug, or when it starts with `%category%` and a category owns it.
+  Site Health runs the same checks, so one created later is flagged.
+- **The slot counts only with its key.** `Schema::addSlot()` checks `SHOW
+  INDEX` for `one_per_slot`, adds the key back when only the column
+  exists, and records `translate_sidecar_unique_slot` as 1 only when the
+  key is there.
+- **Sitemap pages cost a fixed number of queries.** Pages read narrow rows
+  (no text); the hold check reloads a full row only for a stale
+  translation under `hold_major`. With `sitemap_alternates` on, every
+  language of every post on the page is loaded in one narrow query.
+- **Rollback never leaves a gap.** If the prior row changed under the
+  lock, the live row that was set aside is put back.
 - **Deleted originals answer 404**, not 410: case 89 deletes the rows, and
   without a row there is nothing that remembers the slug. Trashed
   originals answer 410 (WordPress renames them `slug__trashed`, which the
@@ -208,4 +240,8 @@ All code lives under `src/`, namespace `IndianOpinion\TranslateSidecar`.
   method; each docblock names the test number.
 - `tests/Integration/WpdbStoreTest.php` runs the database store against a
   real MySQL or MariaDB when `TS_MYSQL_SOCKET` or `TS_MYSQL_HOST` is set,
-  and is skipped otherwise. No test uses the network.
+  and is skipped otherwise. No test uses the network; the llm-json-php
+  adapter is tested against the library's own `MockTransport`.
+- PHPStan runs at level 8 with WordPress stubs. One error is ignored by
+  configuration: the stubs want a literal string for `wpdb::prepare()`,
+  and the store's SQL interpolates its own table names.

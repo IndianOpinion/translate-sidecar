@@ -24,15 +24,16 @@ This project came out of the work on indianopinion.org and is written from scrat
 
 Requirements: PHP 8.1 or later, WordPress 6.4 or later, MySQL 5.7+ or MariaDB 10.4+, pretty permalinks.
 
-**Without Composer.** Download a release, unzip it into `wp-content/plugins/translate-sidecar/` and activate it. The plugin loads its own autoloader (`src/autoload.php`); it has no runtime dependencies.
-
-**With Composer.**
+**With Composer.** The model adapter depends on [`indianopinion/llm-json-php`](https://github.com/IndianOpinion/llm-json-php), which is not on Packagist yet. Composer reads repositories only from the root project, so add it to yours first:
 
 ```sh
+composer config repositories.llm-json-php '{"type": "vcs", "url": "https://github.com/IndianOpinion/llm-json-php", "no-api": true}'
 composer require indianopinion/translate-sidecar
 ```
 
-With `composer/installers` the package lands in `wp-content/plugins/`. Activate it as usual. Activation creates three tables and checks them with `SHOW COLUMNS`.
+With `composer/installers` the package lands in `wp-content/plugins/`. Activate it as usual. Activation creates three tables and checks them with `SHOW COLUMNS`. Inside the plugin's own checkout, `composer install` installs the library into `vendor/` and the plugin loads it from there.
+
+**Without Composer.** Download a release, unzip it into `wp-content/plugins/translate-sidecar/` and activate it. The plugin loads its own autoloader (`src/autoload.php`) and, when present, `vendor/autoload.php`. Without llm-json-php the plugin still runs: the manual adapter works, and a model can be plugged in with the `translate_sidecar_llm_caller` filter (see `examples/llm-caller.php`). To use the llm-json-php adapter without Composer, require the library's `bootstrap.php` from a must-use plugin.
 
 **As a must-use plugin.** Not supported in 0.1.0, because must-use plugins get no activation or uninstall hooks. `examples/mu-loader.php` is a loader stub for those who accept that: the schema installs on the first admin request, and you drop the tables yourself on removal.
 
@@ -40,7 +41,7 @@ With `composer/installers` the package lands in `wp-content/plugins/`. Activate 
 
 1. Activate the plugin. Go to **Translations > Settings**.
 2. Add a language: a prefix such as `fr`, an hreflang tag, a locale, a "read the original" label in that language. The scripts default from a built-in map of common languages; check them. Publish, index and auto start **off**.
-3. Choose an adapter. Out of the box there is the **manual** adapter (human translators). For a language model, supply a caller (see `examples/llm-caller.php`) and choose **Site caller**.
+3. Choose an adapter. Out of the box there is the **manual** adapter (human translators). For a language model, define `TRANSLATE_SIDECAR_LLM_KEY` and `TRANSLATE_SIDECAR_LLM_MODEL` in `wp-config.php` (or hand over your own llm-json-php client, see `examples/llm-json-client.php`) and choose **Language model (llm-json-php)**. Sites without the library supply a caller (see `examples/llm-caller.php`) and choose **Site caller**.
 4. Open a post. In the **Translations** box, click **Preview cost**, then **Request**. Or run `wp translate-sidecar request 123 --lang=fr`.
 5. Wait for a tick (every 5 minutes) or run `wp translate-sidecar run`.
 6. Go to **Translations > Review**. Read the side-by-side view and the guard report, preview the page at its future URL, then approve or reject.
@@ -62,7 +63,7 @@ Everything lives on the settings screen (`manage_options`). Constants override s
 | Minimum source words | 150 | Characters divided by 4 for scripts written without spaces |
 | Maximum segments per job | 200 | Longer posts are refused `too_long`, so one post cannot eat the cap |
 | Source characters per call | 6000 | Segments are grouped up to this size; a bigger segment goes alone |
-| Adapter | none | `manual`, `caller`, or any adapter added by filter |
+| Adapter | none | `manual`, `llm-json`, `caller`, or any adapter added by filter |
 | Daily call cap | 100 | Counted before each call; `0` means no calls; `TRANSLATE_SIDECAR_DAILY_CAP` overrides |
 | Daily character cap | off | Optional second cap |
 | Kill switch | off | Stops every call; also `TRANSLATE_SIDECAR_DISABLED`, and a network option on multisite |
@@ -83,7 +84,15 @@ Everything lives on the settings screen (`manage_options`). Constants override s
 | Self-approval | on | Also `translate_sidecar_allow_self_approval` |
 | Do-not-translate terms | none | Names and brands the model must keep |
 
-API keys never live in an option. Read them from constants or environment variables in your caller.
+API keys never live in an option. The `llm-json` adapter reads these constants, or environment variables of the same name:
+
+| Constant | What it does |
+|---|---|
+| `TRANSLATE_SIDECAR_LLM_KEY` | API key for the provider |
+| `TRANSLATE_SIDECAR_LLM_MODEL` | Model id, or a comma-separated fallback chain (`a/model, b/model`) |
+| `TRANSLATE_SIDECAR_LLM_BASE_URL` | Optional. Any chat completions server; OpenRouter when unset |
+
+The adapter built from them makes one attempt per model and gives up after two minutes, because the plugin's own backoff handles retries. For anything else (your own chain, a file or object cache store, a logger) return an `IndianOpinion\LlmJson\Client` from `translate_sidecar_llm_client`. A Site caller reads its keys however you write it.
 
 ## How it works
 
@@ -105,11 +114,13 @@ Functions: `translate_sidecar_request()`, `_get()`, `_url()`, `_cluster()`, `_cu
 
 Actions: `translate_sidecar_job_queued`, `_job_failed`, `_candidate_ready`, `_approved`, `_rejected`, `_withdrawn`, `_purge_urls` (every URL of the cluster, for your cache), `_capped`, `_tick_finished`, `_run_job` (run one job by id, for external queues).
 
-Filters: `translate_sidecar_languages`, `_post_types`, `_is_eligible`, `_source_fields` (feed your SEO title and description), `_translators`, `_llm_caller`, `_prompt`, `_glossary`, `_segment_budget`, `_max_segments`, `_verbatim_blocks`, `_guard_thresholds`, `_script_ranges`, `_detect_language`, `_major_change_share`, `_cluster`, `_x_default`, `_canonical`, `_head_values`, `_schema_graph`, `_sitemap_max_urls`, `_sitemap_routes`, `_allow_self_approval`, `_capability`, `_original_link`, `_spend_allow_reasons`, `_retention_days`, `_memory_days`.
+Filters: `translate_sidecar_languages`, `_post_types`, `_is_eligible`, `_source_fields` (feed your SEO title and description), `_translators`, `_llm_client`, `_llm_caller`, `_prompt`, `_glossary`, `_segment_budget`, `_max_segments`, `_verbatim_blocks`, `_guard_thresholds`, `_script_ranges`, `_detect_language`, `_major_change_share`, `_cluster`, `_x_default`, `_canonical`, `_head_values`, `_schema_graph`, `_sitemap_max_urls`, `_sitemap_routes`, `_allow_self_approval`, `_capability`, `_original_link`, `_spend_allow_reasons`, `_retention_days`, `_memory_days`.
 
 REST, under `translate-sidecar/v1`: `GET /posts/{id}/translations` (public, routed only), `POST /posts/{id}/translations`, `GET /rows/{id}`, `POST /rows/{id}/approve|reject|withdraw|rollback`.
 
-A model caller has the signature `fn(string $system, string $user, array $jsonSchema, array $meta): array` and returns the decoded JSON. Throw `TranslatorException` (`fromHttpStatus()` maps 429 and 5xx to retry and 402 to a credit pause). `indianopinion/llm-json-php` is a good transport; add it as a Composer `vcs` repository and wrap it in the filter.
+The `llm-json` adapter maps llm-json-php's failures onto the plugin's: an exhausted credit pauses calls until the next day, a truncated reply fails `truncated`, a reply that is not the JSON shape fails `bad_shape`, a refusal or a bad key fails at once, and rate limits, server errors and timeouts retry on the backoff schedule.
+
+For sites without llm-json-php, a model caller has the signature `fn(string $system, string $user, array $jsonSchema, array $meta): array` and returns the decoded JSON. Throw `TranslatorException` (`fromHttpStatus()` maps 429 and 5xx to retry and 402 to a credit pause).
 
 ## WP-CLI
 

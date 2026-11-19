@@ -19,7 +19,7 @@ constants in traits).
 
 ```sh
 composer test        # PHPUnit, no WordPress needed (tests/stubs/)
-composer stan        # PHPStan level 6 with WordPress stubs
+composer stan        # PHPStan level 8 with WordPress stubs
 composer cs          # PHP_CodeSniffer, PSR-12
 composer check       # all three
 ```

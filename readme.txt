@@ -20,7 +20,7 @@ Every machine translation passes guards: every segment back once, no truncation,
 
 Nothing publishes on its own. Every translation is a candidate until a reviewer approves it, and every language starts with publish and index switches off. A daily call cap and a kill switch stop spend.
 
-Translation backends plug in through an adapter interface. A manual adapter for human translators ships with the plugin; a model adapter runs on any caller you supply through a filter.
+Translation backends plug in through an adapter interface. A manual adapter for human translators ships with the plugin. The model adapter runs on the indianopinion/llm-json-php library, with the API key and model read from constants; a site without that library can supply its own caller through a filter.
 
 == Installation ==
 
