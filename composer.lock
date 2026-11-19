@@ -4,8 +4,96 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "b61e92e1bd0c41857f8058b32c8d5286",
-    "packages": [],
+    "content-hash": "d8930d1cebfabbd927fa78b993fc3a63",
+    "packages": [
+        {
+            "name": "indianopinion/llm-json-php",
+            "version": "v0.1.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/IndianOpinion/llm-json-php",
+                "reference": "6ada5b76cd5280548db045a531408ae60898c28d"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/IndianOpinion/llm-json-php/zipball/6ada5b76cd5280548db045a531408ae60898c28d",
+                "reference": "6ada5b76cd5280548db045a531408ae60898c28d",
+                "shasum": ""
+            },
+            "require": {
+                "ext-json": "*",
+                "ext-pcre": "*",
+                "php": ">=8.1"
+            },
+            "require-dev": {
+                "phpstan/phpstan": "^2.1",
+                "phpunit/phpunit": "^10.5",
+                "psr/log": "^3.0",
+                "psr/simple-cache": "^3.0",
+                "squizlabs/php_codesniffer": "^3.10"
+            },
+            "suggest": {
+                "ext-curl": "Used by the default transport. Without it the library falls back to PHP streams, or use WordPressTransport.",
+                "psr/log": "Pass any PSR-3 logger; it is wrapped by Log\\Psr3Logger.",
+                "psr/simple-cache": "Needed for Store\\Psr16Store."
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "IndianOpinion\\LlmJson\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "IndianOpinion\\LlmJson\\Tests\\": "tests/"
+                }
+            },
+            "scripts": {
+                "test": [
+                    "phpunit"
+                ],
+                "analyse": [
+                    "phpstan analyse --no-progress"
+                ],
+                "lint": [
+                    "phpcs"
+                ],
+                "check": [
+                    "@lint",
+                    "@analyse",
+                    "@test"
+                ]
+            },
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Indian Opinion",
+                    "email": "hello@indianopinion.org",
+                    "homepage": "https://indianopinion.org"
+                }
+            ],
+            "description": "Structured JSON from OpenRouter, OpenAI or any chat completions endpoint in plain PHP: model chain, cooldowns, credit-exhausted fallback, schema validation and a guard that rejects truncated or corrupted output.",
+            "homepage": "https://github.com/IndianOpinion/llm-json-php",
+            "keywords": [
+                "fallback",
+                "json-schema",
+                "llm",
+                "openai",
+                "openrouter",
+                "retry",
+                "structured-output",
+                "wordpress"
+            ],
+            "support": {
+                "issues": "https://github.com/IndianOpinion/llm-json-php/issues",
+                "source": "https://github.com/IndianOpinion/llm-json-php",
+                "email": "hello@indianopinion.org"
+            },
+            "time": "2026-11-12T06:09:03+00:00"
+        }
+    ],
     "packages-dev": [
         {
             "name": "myclabs/deep-copy",

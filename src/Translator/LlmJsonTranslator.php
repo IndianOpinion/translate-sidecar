@@ -4,25 +4,50 @@ declare(strict_types=1);
 
 namespace IndianOpinion\TranslateSidecar\Translator;
 
-/**
- * Model adapter: sends a generic prompt and a strict JSON schema through a
- * caller, then validates the shape of the reply.
- *
- * The caller has the signature
- * `fn(string $system, string $user, array $jsonSchema, array $meta): array`
- * and returns the decoded JSON object. It may add a `_meta` key with
- * `finish_reason`, `provider`, `model` and `usage`. Supply it with the
- * `translate_sidecar_llm_caller` filter, for example as a thin wrapper
- * around indianopinion/llm-json-php or the WordPress HTTP API.
- */
-class LlmJsonTranslator implements Translator
-{
-    /** @var callable */
-    private $caller;
+use IndianOpinion\LlmJson\Attempt;
+use IndianOpinion\LlmJson\Chain;
+use IndianOpinion\LlmJson\Client;
+use IndianOpinion\LlmJson\CreditExhaustion;
+use IndianOpinion\LlmJson\Exception\ChainExhaustedException;
+use IndianOpinion\LlmJson\Exception\ConfigurationException;
+use IndianOpinion\LlmJson\Exception\CreditExhaustedException;
+use IndianOpinion\LlmJson\Exception\LlmJsonException;
+use IndianOpinion\LlmJson\Options;
+use IndianOpinion\LlmJson\Outcome;
+use IndianOpinion\LlmJson\Provider;
+use IndianOpinion\LlmJson\Request;
+use IndianOpinion\LlmJson\Route;
+use IndianOpinion\LlmJson\Schema;
+use IndianOpinion\LlmJson\Store\WordPressTransientStore;
+use IndianOpinion\LlmJson\Transport\WordPressTransport;
 
-    public function __construct(callable $caller, private readonly int $maxChars = 6000)
+/**
+ * Model adapter built on indianopinion/llm-json-php (PRD 5.1). Sends the
+ * generic prompt with a strict JSON schema through an llm-json-php Client
+ * and maps the library's typed failures onto TranslatorException, so the
+ * runner retries, fails or pauses exactly as for any other adapter.
+ *
+ * The client comes from the `translate_sidecar_llm_client` filter, or is
+ * built from constants (or environment variables of the same name):
+ * `TRANSLATE_SIDECAR_LLM_KEY`, `TRANSLATE_SIDECAR_LLM_MODEL` (one model or
+ * a comma-separated fallback chain) and, for any chat completions server
+ * other than OpenRouter, `TRANSLATE_SIDECAR_LLM_BASE_URL`.
+ */
+final class LlmJsonTranslator implements Translator
+{
+    public const PURPOSE = 'translate_sidecar.translate';
+
+    public function __construct(private readonly Client $client, private readonly int $maxChars = 6000)
     {
-        $this->caller = $caller;
+    }
+
+    /**
+     * True when the library is installed (through Composer or its own
+     * bootstrap file).
+     */
+    public static function available(): bool
+    {
+        return class_exists(Client::class);
     }
 
     public function id(): string
@@ -32,7 +57,7 @@ class LlmJsonTranslator implements Translator
 
     public function label(): string
     {
-        return 'Language model (JSON)';
+        return 'Language model (llm-json-php)';
     }
 
     public function maxCharsPerCall(): int
@@ -42,63 +67,101 @@ class LlmJsonTranslator implements Translator
 
     public function translate(TranslationRequest $request): TranslationResponse
     {
-        $messages = PromptBuilder::messages($request);
-        $meta = [
-            'job_id' => $request->jobId,
-            'purpose' => 'translate_sidecar.translate',
-            'caller' => 'translate-sidecar',
-            'target_language' => $request->targetLang,
-        ];
         try {
-            $reply = ($this->caller)($messages[0]['content'], $messages[1]['content'], PromptBuilder::schema(), $meta);
-        } catch (TranslatorException $e) {
-            throw $e;
-        } catch (\Throwable $e) {
-            throw new TranslatorException('Caller failed: ' . $e->getMessage(), 'caller_error', true, false, $e);
+            $call = Request::for(self::PURPOSE, Schema::fromArray('translation', PromptBuilder::schema()))
+                ->withMessages(PromptBuilder::messages($request));
+            $result = $this->client->complete($call);
+        } catch (CreditExhaustedException $e) {
+            $providers = array_map(static fn (CreditExhaustion $c): string => $c->provider, $e->exhaustedProviders());
+            throw new TranslatorException('Provider credit is exhausted: ' . implode(', ', array_unique($providers)) . '.', 'credit_exhausted', false, true, $e);
+        } catch (ChainExhaustedException $e) {
+            throw self::fromChain($e);
+        } catch (ConfigurationException $e) {
+            throw new TranslatorException('llm-json-php configuration: ' . $e->getMessage(), 'configuration', false, false, $e);
+        } catch (LlmJsonException $e) {
+            throw new TranslatorException('llm-json-php: ' . $e->getMessage(), 'llm_json_error', true, false, $e);
         }
 
-        return self::parse($reply);
+        $data = $result->data();
+        $usage = $result->totalUsage();
+        $data['_meta'] = [
+            'finish_reason' => TranslationResponse::FINISH_STOP,
+            'provider' => $result->provider(),
+            'model' => $result->model(),
+            'usage' => [
+                'input_units' => (int) $usage->promptTokens,
+                'output_units' => (int) $usage->completionTokens,
+            ],
+        ];
+
+        return ModelReply::parse($data);
     }
 
     /**
-     * Validates the decoded reply and builds a response.
+     * Maps an exhausted chain to the runner's terms from the last attempt.
+     * Messages name outcomes and status codes only: never a body, never a
+     * key.
      */
-    public static function parse(mixed $reply): TranslationResponse
+    public static function fromChain(ChainExhaustedException $e): TranslatorException
     {
-        if (!is_array($reply) || !isset($reply['segments']) || !is_array($reply['segments'])) {
-            throw TranslatorException::fatal('Reply is not an object with a segments list.', 'bad_shape');
+        $attempts = $e->attempts();
+        $last = $attempts !== [] ? $attempts[array_key_last($attempts)] : null;
+        if (!$last instanceof Attempt) {
+            // Every route skipped (cooldown) or the deadline ran out before
+            // any attempt: try again later.
+            return new TranslatorException('llm-json-php: no attempt was made (' . $e->reason() . ').', 'no_attempt', true, false, $e);
         }
-        $segments = [];
-        $dupes = [];
-        foreach ($reply['segments'] as $item) {
-            if (!is_array($item) || !isset($item['id'], $item['text']) || !is_scalar($item['id']) || !is_string($item['text'])) {
-                throw TranslatorException::fatal('A segment is not an object with string id and text.', 'bad_shape');
-            }
-            $id = (string) $item['id'];
-            if (array_key_exists($id, $segments)) {
-                $dupes[] = $id;
-                continue;
-            }
-            $segments[$id] = $item['text'];
+        $message = sprintf('llm-json-php: %s after %d attempt(s), last %s on %s%s.', $e->reason(), count($attempts), $last->outcome->value, $last->model, $last->httpStatus !== null ? ' (HTTP ' . $last->httpStatus . ')' : '');
+        if ($e->isDeadline()) {
+            return new TranslatorException($message, 'deadline', true, false, $e);
         }
-        $meta = isset($reply['_meta']) && is_array($reply['_meta']) ? $reply['_meta'] : [];
-        $finish = (string) ($meta['finish_reason'] ?? TranslationResponse::FINISH_STOP);
-        if (!in_array($finish, [TranslationResponse::FINISH_STOP, TranslationResponse::FINISH_LENGTH, TranslationResponse::FINISH_OTHER], true)) {
-            $finish = TranslationResponse::FINISH_OTHER;
-        }
-        $usage = isset($meta['usage']) && is_array($meta['usage']) ? $meta['usage'] : [];
 
-        return new TranslationResponse(
-            $segments,
-            isset($reply['language']) && is_string($reply['language']) && $reply['language'] !== '' ? $reply['language'] : null,
-            $finish,
-            (string) ($meta['provider'] ?? ''),
-            (string) ($meta['model'] ?? ''),
-            [
-                'input_units' => (int) ($usage['input_units'] ?? $usage['input_tokens'] ?? 0),
-                'output_units' => (int) ($usage['output_units'] ?? $usage['output_tokens'] ?? 0),
-            ],
-            $dupes,
-        );
+        return match ($last->outcome) {
+            Outcome::Truncated => new TranslatorException($message, 'truncated', false, false, $e),
+            Outcome::Malformed, Outcome::SchemaViolation => new TranslatorException($message, 'bad_shape', false, false, $e),
+            Outcome::CreditExhausted => new TranslatorException($message, 'credit_exhausted', false, true, $e),
+            default => new TranslatorException($message, $last->outcome->value, $last->outcome->isRetryable(), false, $e),
+        };
+    }
+
+    /**
+     * A client built from constants or environment variables, or null when
+     * the key or the model is missing. Uses the WordPress HTTP API and
+     * transients when WordPress is loaded. One attempt per route and a two
+     * minute deadline: the plugin's own backoff handles retries, and a
+     * WP-Cron tick must not hang.
+     */
+    public static function clientFromConstants(): ?Client
+    {
+        if (!self::available()) {
+            return null;
+        }
+        $key = self::setting('TRANSLATE_SIDECAR_LLM_KEY');
+        $models = array_values(array_filter(array_map('trim', explode(',', self::setting('TRANSLATE_SIDECAR_LLM_MODEL')))));
+        if ($key === '' || $models === []) {
+            return null;
+        }
+        $base = self::setting('TRANSLATE_SIDECAR_LLM_BASE_URL');
+        $provider = $base !== ''
+            ? Provider::generic('custom', $base, $key)->withStructuredOutputs(false, true)
+            : Provider::openRouter($key);
+        $chain = Chain::of(...array_map(static fn (string $model): Route => Route::to($provider, $model), $models));
+        $client = Client::create($chain, function_exists('wp_remote_post') ? new WordPressTransport() : null)
+            ->withOptions(Options::defaults()->withAttemptsPerRoute(1)->withDeadline(120));
+        if (function_exists('get_transient')) {
+            $client = $client->withStore(new WordPressTransientStore());
+        }
+
+        return $client;
+    }
+
+    private static function setting(string $name): string
+    {
+        if (defined($name)) {
+            return trim((string) constant($name));
+        }
+        $env = getenv($name);
+
+        return is_string($env) ? trim($env) : '';
     }
 }

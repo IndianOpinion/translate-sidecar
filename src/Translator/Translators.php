@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IndianOpinion\TranslateSidecar\Translator;
 
+use IndianOpinion\LlmJson\Client;
 use IndianOpinion\TranslateSidecar\Language\Language;
 use IndianOpinion\TranslateSidecar\Settings;
 
@@ -28,6 +29,17 @@ final class Translators
             return $this->cache;
         }
         $list = ['manual' => new ManualTranslator()];
+        if (LlmJsonTranslator::available()) {
+            // A site may hand over its own llm-json-php client (its chain,
+            // keys and store); otherwise one is built from constants.
+            $client = apply_filters('translate_sidecar_llm_client', null);
+            if (!$client instanceof Client) {
+                $client = LlmJsonTranslator::clientFromConstants();
+            }
+            if ($client !== null) {
+                $list['llm-json'] = new LlmJsonTranslator($client, $this->settings->int('segment_budget'));
+            }
+        }
         $caller = apply_filters('translate_sidecar_llm_caller', null);
         if (is_callable($caller)) {
             $list['caller'] = new CallerTranslator($caller, $this->settings->int('segment_budget'));
